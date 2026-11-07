@@ -18,5 +18,6 @@ This workspace did not have Android Studio, Gradle, or an Android SDK available,
 - Reports Android release/security patch metadata and a best-effort legacy unknown-source install setting.
 - Runs a deliberately weak local name/package heuristic. A match is a review prompt, not a malware verdict.
 - Keeps results on device. It has no Internet permission and does not upload data, inspect other apps' private files, modify device settings, or uninstall software.
+- Offers an explicitly opt-in WorkManager check every 12 hours. Android may defer these checks for battery and system scheduling; they are not continuous protection. Notifications are only sent for weak heuristic matches and require notification permission on Android 13+.
 
 Android limits app visibility and isolates application data. This app is not equivalent to a commercial antivirus engine, cannot scan all files or other apps' private data, and cannot guarantee detection of spyware or root-level compromise. Use Google Play Protect and trusted specialist support for suspected targeted spyware.
