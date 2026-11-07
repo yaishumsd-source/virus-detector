@@ -8,7 +8,7 @@
     </queries>
     <application
         android:allowBackup="false"
-        android:label="Sentinel Security"
+        android:label="YXSHU Security"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
