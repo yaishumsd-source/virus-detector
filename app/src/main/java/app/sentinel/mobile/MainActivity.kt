@@ -1,11 +1,10 @@
 package app.sentinel.mobile
 
 import android.app.Activity
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
+import android.Manifest
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -22,6 +21,8 @@ class MainActivity : Activity() {
     private lateinit var scanButton: Button
     private lateinit var results: LinearLayout
     private lateinit var status: TextView
+    private lateinit var backgroundStatus: TextView
+    private lateinit var backgroundButton: Button
     private val green = Color.rgb(8, 118, 83)
     private val ink = Color.rgb(23, 36, 31)
     private val muted = Color.rgb(104, 119, 110)
@@ -64,6 +65,21 @@ class MainActivity : Activity() {
         }
         panel.addView(scanButton, params(top = 12))
 
+        val backgroundCard = card()
+        root.addView(backgroundCard, params(top = 16))
+        backgroundCard.addView(text("Background checks", 19, ink, true))
+        backgroundCard.addView(text("When enabled, Android schedules a quick on-device check about every 12 hours. Battery saving may delay it. This is not continuous protection and does not block or remove malware.", 14, muted, false, 7))
+        backgroundStatus = text("", 13, green, true, 8)
+        backgroundCard.addView(backgroundStatus)
+        backgroundButton = Button(this).apply {
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(green))
+            setOnClickListener { requestBackgroundConsent() }
+        }
+        backgroundCard.addView(backgroundButton, params(top = 8))
+        updateBackgroundUi()
+
         val findingsCard = card()
         root.addView(findingsCard, params(top = 16))
         findingsCard.addView(text("Scan results", 19, ink, true))
@@ -96,43 +112,76 @@ class MainActivity : Activity() {
         results.removeAllViews()
         results.addView(text("Checking on device…", 14, muted, false))
         executor.execute {
-            val report = runCatching { performScan() }.getOrElse { e ->
-                listOf("Scan error" to (e.message ?: "Android denied a requested check."))
-            }
+            val scan = runCatching { DeviceScanner.scan(this) }
             runOnUiThread {
                 results.removeAllViews()
-                report.forEach { (title, detail) -> addResult(title, "Reviewed", detail) }
+                val report = scan.getOrNull()
+                if (report == null) {
+                    addResult("Scan error", "Could not complete", scan.exceptionOrNull()?.message ?: "Android denied a requested check.")
+                } else {
+                    report.findings().forEach { (title, detail) -> addResult(title, "Reviewed", detail) }
+                }
                 status.text = "Completed · ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())} · On device"
                 scanButton.isEnabled = true
             }
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun performScan(): List<Pair<String, String>> {
-        val pm = packageManager
-        val launchIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
-        val apps = pm.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL)
-        val thirdParty = apps.filter { it.activityInfo?.applicationInfo?.let { info -> info.flags and ApplicationInfo.FLAG_SYSTEM == 0 } == true }
-        val unknownApps = thirdParty.filter { info ->
-            val name = info.loadLabel(pm).toString().lowercase()
-            val pkg = info.activityInfo.packageName.lowercase()
-            name.contains("cleaner") || name.contains("booster") || name.contains("update service") || pkg.contains("spy") || pkg.contains("stalker")
+    private fun requestBackgroundConsent() {
+        val enabled = getSharedPreferences(BackgroundChecks.PREFS, MODE_PRIVATE)
+            .getBoolean(BackgroundChecks.ENABLED, false)
+        if (enabled) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Turn off background checks?")
+                .setMessage("YXSHU will stop scheduling periodic app-name and security-setting checks. Android's built-in protections remain available.")
+                .setNegativeButton("Keep enabled", null)
+                .setPositiveButton("Turn off") { _, _ ->
+                    BackgroundChecks.disable(this)
+                    updateBackgroundUi()
+                }
+                .show()
+            return
         }
-        val version = android.os.Build.VERSION.RELEASE ?: "unknown"
-        val patch = android.os.Build.VERSION.SECURITY_PATCH ?: "not reported"
-        val packageInstallers = thirdParty.mapNotNull { it.activityInfo?.packageName }.distinct().size
-        val canInstall = runCatching { Settings.Secure.getInt(contentResolver, "install_non_market_apps", 0) == 1 }.getOrDefault(false)
-        val appSummary = if (unknownApps.isEmpty()) {
-            "Reviewed $packageInstallers visible non-system launcher apps. No basic name/package heuristic matched; this is not proof the apps are safe."
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Enable scheduled background checks?")
+            .setMessage("With your consent, YXSHU will schedule a short on-device check about every 12 hours. Android may delay checks to save battery. It checks only launcher apps visible to YXSHU and basic device indicators. It cannot inspect other apps' private data, continuously block threats, or remove malware. Results stay on this phone. Allow checks?")
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Allow background checks") { _, _ ->
+                BackgroundChecks.enable(this)
+                BackgroundChecks.createNotificationChannel(this)
+                updateBackgroundUi()
+                if (Build.VERSION.SDK_INT >= 33 && !BackgroundChecks.notificationsAllowed(this)) {
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_REQUEST)
+                }
+            }
+            .show()
+    }
+
+    private fun updateBackgroundUi() {
+        if (!::backgroundStatus.isInitialized) return
+        val prefs = getSharedPreferences(BackgroundChecks.PREFS, MODE_PRIVATE)
+        val enabled = prefs.getBoolean(BackgroundChecks.ENABLED, false)
+        backgroundButton.text = if (enabled) "Turn off background checks" else "Enable background checks"
+        val last = prefs.getLong(BackgroundChecks.LAST_CHECK, 0L)
+        val notificationText = if (enabled && !BackgroundChecks.notificationsAllowed(this)) " · notifications are off" else ""
+        backgroundStatus.text = if (!enabled) {
+            "Off · No background scan is scheduled"
+        } else if (last == 0L) {
+            "On · First check is scheduled · Android may defer it$notificationText"
         } else {
-            "${unknownApps.size} app(s) matched a weak name/package heuristic: ${unknownApps.take(5).joinToString { it.loadLabel(pm).toString() }}. Verify each app manually; names alone do not establish malware."
+            "On · Last check ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(last))}$notificationText"
         }
-        return listOf(
-            "Visible app inventory" to appSummary,
-            "Android security patch" to "Android $version · security patch $patch. Verify Settings → Security & privacy for the latest update available to your device.",
-            "Unknown-source install indicator" to if (canInstall) "This device reports a legacy global unknown-source install flag. Review per-app Install unknown apps access in Settings." else "No legacy global unknown-source install flag was detected. Android may manage this per app; review Special app access in Settings."
-        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateBackgroundUi()
+    }
+
+    @Deprecated("Deprecated by Android; kept for compatibility with the minimum SDK")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NOTIFICATION_REQUEST) updateBackgroundUi()
     }
 
     private fun addResult(title: String, state: String, detail: String) {
@@ -160,6 +209,10 @@ class MainActivity : Activity() {
     private fun label(value: String, size: Int, color: Int, bold: Boolean, top: Int = 0) { root.addView(text(value, size, color, bold, top)) }
     private fun params(top: Int = 0) = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (top > 0) topMargin = dp(top) }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val NOTIFICATION_REQUEST = 1002
+    }
 
     override fun onDestroy() { executor.shutdownNow(); super.onDestroy() }
 }
