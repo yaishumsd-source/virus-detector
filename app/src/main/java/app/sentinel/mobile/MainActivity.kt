@@ -44,7 +44,7 @@ class MainActivity : Activity() {
         scroll.addView(root)
         setContentView(scroll)
 
-        label("✳  SENTINEL SECURITY", 14, green, true)
+        label("✳  YXSHU SECURITY", 14, green, true)
         label("Mobile threat check", 29, ink, true, 18)
         label("A transparent, on-device review of supported Android security signals.", 15, muted, false, 5)
 
@@ -78,13 +78,13 @@ class MainActivity : Activity() {
         root.addView(tips, params(top = 16))
         tips.addView(text("For stronger protection", 18, ink, true))
         tips.addView(text("• Run Google Play Protect from the Play Store.\n• Install Android and app updates.\n• Review Accessibility, Device admin, VPN, and app permissions in Settings.\n• Uninstall apps you don’t recognize and avoid sideloaded apps.\n• If you suspect targeted spyware, use a trusted specialist; a normal app cannot verify a clean device.", 14, muted, false, 8))
-        root.addView(text("Sentinel runs locally. Findings are indicators, not a malware verdict.", 12, muted, false, 18).apply { gravity = Gravity.CENTER })
+        root.addView(text("YXSHU runs locally. Findings are indicators, not a malware verdict.", 12, muted, false, 18).apply { gravity = Gravity.CENTER })
     }
 
     private fun requestConsent() {
         android.app.AlertDialog.Builder(this)
             .setTitle("Allow a supported device check?")
-            .setMessage("With your consent, Sentinel will read launcher app names and package IDs visible to it, plus Android version and the security patch date. It will not read app data, photos, messages, or documents; change settings; remove apps; or send scan data anywhere. Results are heuristic and cannot guarantee spyware detection. Continue?")
+            .setMessage("With your consent, YXSHU will read launcher app names and package IDs visible to it, plus Android version and the security patch date. It will not read app data, photos, messages, or documents; change settings; remove apps; or send scan data anywhere. Results are heuristic and cannot guarantee spyware detection. Continue?")
             .setNegativeButton("Not now", null)
             .setPositiveButton("I consent · Start scan") { _, _ -> startScan() }
             .show()
