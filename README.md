@@ -1,4 +1,4 @@
-# Sentinel Security for Android
+# YXSHU Security for Android
 
 An Android Studio starter app for a consent-first, on-device security review.
 
